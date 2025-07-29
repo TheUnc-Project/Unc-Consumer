@@ -4,6 +4,7 @@ botocore==1.34.131
 
 # HTTP requests library
 requests==2.31.0
+httpx==0.25.2
 
 # JSON Web Token handling
 PyJWT==2.8.0
