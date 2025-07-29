@@ -210,26 +210,35 @@ jobs:
 
       - name: Configure Lambda trigger
         run: |
+          # Get Queue ARN for permissions
+          QUEUE_ARN=$(aws sqs get-queue-attributes \
+            --queue-url "${{ env.QUEUE_URL }}" \
+            --attribute-names QueueArn \
+            --output text --query 'Attributes.QueueArn')
+
+          # Remove existing triggers (ignore if not exists)
           aws lambda remove-permission \
             --function-name ${{ env.FUNCTION_NAME }} \
             --statement-id sqs-trigger || true
 
+          # Add SQS trigger permission
           aws lambda add-permission \
             --function-name ${{ env.FUNCTION_NAME }} \
             --statement-id sqs-trigger \
             --action lambda:InvokeFunction \
             --principal sqs.amazonaws.com \
-            --source-arn ${{ env.QUEUE_URL }}
+            --source-arn "$QUEUE_ARN"
 
+          # Create event source mapping
           MAPPING_UUID=$(aws lambda list-event-source-mappings \
             --function-name ${{ env.FUNCTION_NAME }} \
-            --query "EventSourceMappings[?EventSourceArn=='${{ env.QUEUE_URL }}'].UUID" \
+            --query "EventSourceMappings[?EventSourceArn=='$QUEUE_ARN'].UUID" \
             --output text)
 
           if [ -z "$MAPPING_UUID" ] || [ "$MAPPING_UUID" = "None" ]; then
             aws lambda create-event-source-mapping \
               --function-name ${{ env.FUNCTION_NAME }} \
-              --event-source-arn ${{ env.QUEUE_URL }} \
+              --event-source-arn "$QUEUE_ARN" \
               --batch-size 100 \
               --maximum-batching-window-in-seconds 0
           fi
