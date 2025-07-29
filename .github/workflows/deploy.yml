@@ -121,13 +121,23 @@ jobs:
                   "arn:aws:dynamodb:%s:%s:table/%s",
                   "arn:aws:dynamodb:%s:%s:table/%s"
                 ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "logs:CreateLogGroup",
+                  "logs:CreateLogStream",
+                  "logs:PutLogEvents"
+                ],
+                "Resource": "arn:aws:logs:%s:%s:log-group:/aws/lambda/%s:*"
               }
             ]
           }' "$REGION" "$ACCOUNT_ID" \
              "$REGION" "$ACCOUNT_ID" "$CLEAN_QUEUE_NAME" \
              "$REGION" "$ACCOUNT_ID" "$DLQ_NAME" \
              "$REGION" "$ACCOUNT_ID" "$DYNAMODB_CHAT_TABLE" \
-             "$REGION" "$ACCOUNT_ID" "$DYNAMODB_SESSION_TABLE")
+             "$REGION" "$ACCOUNT_ID" "$DYNAMODB_SESSION_TABLE" \
+             "$REGION" "$ACCOUNT_ID" "${{ env.FUNCTION_NAME }}"
 
           aws iam put-role-policy \
             --role-name $ROLE_NAME \
@@ -191,7 +201,8 @@ jobs:
               --timeout 300 \
               --memory-size 256 \
               --description "Unc Consumer Lambda Function deployed via GitHub Actions" \
-              --environment "Variables={SQS_QUEUE_URL=${{ env.QUEUE_URL }}}"
+              --environment "Variables={SQS_QUEUE_URL=${{ env.QUEUE_URL }}}" \
+              --tracing-config Mode=Active
 
             aws lambda wait function-exists --function-name ${{ env.FUNCTION_NAME }}
             aws lambda wait function-updated --function-name ${{ env.FUNCTION_NAME }}
@@ -204,7 +215,8 @@ jobs:
             --runtime python3.11 \
             --timeout 300 \
             --memory-size 256 \
-            --environment "Variables={SQS_QUEUE_URL=${{ env.QUEUE_URL }}}"
+            --environment "Variables={SQS_QUEUE_URL=${{ env.QUEUE_URL }}}" \
+            --tracing-config Mode=Active
 
           aws lambda wait function-updated --function-name ${{ env.FUNCTION_NAME }}
 
@@ -242,7 +254,7 @@ jobs:
               --batch-size 100 \
               --scaling-config MaximumConcurrency=2
           fi
-          
+
       - name: Wait for Lambda update
         run: aws lambda wait function-updated --function-name ${{ env.FUNCTION_NAME }}
 
