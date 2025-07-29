@@ -381,6 +381,7 @@ jobs:
               --function-name ${{ env.QUEUE_FUNCTION_NAME }} \
               --event-source-arn "$QUEUE_ARN" \
               --batch-size 100 \
+              --maximum-batching-window-in-seconds 5 \
               --scaling-config MaximumConcurrency=2
           fi
 
