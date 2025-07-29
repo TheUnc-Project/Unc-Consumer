@@ -7,7 +7,7 @@ import json
 from urllib.parse import parse_qs
 from logger_setup import get_logger
 from typing import Dict, Any, List
-from handlers.message_processor import process_message
+from handlers.queue_message_handler import process_message
 
 logger = get_logger("consumer")
 
@@ -115,7 +115,7 @@ def group_messages_by_sender(
     return messages_by_sender
 
 
-def consumer_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+def queue_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     AWS Lambda handler function for processing SQS FIFO messages.
     Messages are grouped by senderId and processed in batches.
@@ -160,6 +160,29 @@ def consumer_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }
             ),
         }
+
+    except Exception as e:
+        logger.error("Error in consumer handler", error=e)
+        return {
+            "statusCode": 500,
+            "body": json.dumps({"error": "Internal server error", "message": str(e)}),
+        }
+
+def dynamo_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
+    """
+    AWS Lambda handler function for processing DynamoDB messages.
+    Messages are grouped by senderId and processed in batches.
+
+    Args:
+        event: The event dict that contains the SQS records
+        context: The context object that contains information about the runtime
+
+    Returns:
+        Dict containing the processing results
+    """
+    try:
+        records = event.get("Records", [])
+        logger.info("Records", records=records)
 
     except Exception as e:
         logger.error("Error in consumer handler", error=e)
