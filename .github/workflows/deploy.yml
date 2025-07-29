@@ -119,7 +119,9 @@ jobs:
                 ],
                 "Resource": [
                   "arn:aws:dynamodb:'$REGION':'$ACCOUNT_ID':table/'$DYNAMODB_CHAT_TABLE'",
-                  "arn:aws:dynamodb:'$REGION':'$ACCOUNT_ID':table/'$DYNAMODB_SESSION_TABLE'"
+                  "arn:aws:dynamodb:'$REGION':'$ACCOUNT_ID':table/'$DYNAMODB_SESSION_TABLE'",
+                  "arn:aws:dynamodb:'$REGION':'$ACCOUNT_ID':table/'$DYNAMODB_CHAT_TABLE'/index/*",
+                  "arn:aws:dynamodb:'$REGION':'$ACCOUNT_ID':table/'$DYNAMODB_SESSION_TABLE'/index/*"
                 ]
               },
               {
