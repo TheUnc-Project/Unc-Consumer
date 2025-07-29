@@ -36,8 +36,20 @@ def dynamo_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                             "sender_id not found in record", record=unmarshalled
                         )
 
-        # Fire off all notify calls in parallel
-        asyncio.run(asyncio.gather(*[notify_reply_service(sid) for sid in sender_ids]))
+        # Fire off all notify calls in parallel only if there are sender_ids
+        if sender_ids:
+            logger.info(f"Notifying reply service for {len(sender_ids)} sender(s)")
+            # Create a new event loop for Lambda compatibility
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                loop.run_until_complete(
+                    asyncio.gather(*[notify_reply_service(sid) for sid in sender_ids])
+                )
+            finally:
+                loop.close()
+        else:
+            logger.info("No sender_ids to notify")
 
         return {
             "statusCode": 200,
