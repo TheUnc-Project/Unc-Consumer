@@ -6,7 +6,7 @@ logger = get_logger("reply")
 
 
 async def notify_reply_service(sender_id: str) -> None:
-    url = "https://intelligence.theuncproject.com/reply"
+    url = "https://intelligence.theuncproject.com/reply/"
     payload = {"sender_id": sender_id}
 
     try:
