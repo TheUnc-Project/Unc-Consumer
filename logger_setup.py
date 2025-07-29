@@ -1,42 +1,67 @@
 """
-Logger setup for structured logging
+Logger setup module for AWS Lambda functions.
 """
 
-import json
 import logging
+import sys
+from typing import Any
 
-class Logger:
-    def __init__(self, name: str):
-        self.logger = logging.getLogger(name)
-        self.name = name
 
-    def _format_log(self, message: str, **kwargs) -> str:
-        """Format log message with metadata as JSON."""
-        return json.dumps({"message": message, "service": self.name, **kwargs})
+class LambdaLogFormatter(logging.Formatter):
+    """Custom formatter that includes additional context."""
 
-    def info(self, message: str, **kwargs) -> None:
-        """Log info level message."""
-        self.logger.info(self._format_log(message, **kwargs))
+    def format(self, record: logging.LogRecord) -> str:
+        # Get the original format
+        record_dict = record.__dict__
 
-    def error(self, message: str, error: Exception = None, **kwargs) -> None:
-        """Log error level message."""
-        error_details = (
-            {"error_type": error.__class__.__name__, "error_message": str(error)}
-            if error
-            else {"error_message": kwargs.get("error", "Unknown error")}
+        # Add extra fields if they exist
+        extra = {
+            key: value
+            for key, value in record_dict.items()
+            if key not in logging.LogRecord("").__dict__ and not key.startswith("_")
+        }
+
+        # Add the extra fields to the message
+        if extra:
+            record.msg = f"{record.msg} | Extra: {extra}"
+
+        return super().format(record)
+
+
+def get_logger(name: str) -> logging.Logger:
+    """
+    Get a configured logger instance.
+
+    Args:
+        name: Name for the logger
+
+    Returns:
+        Configured logger instance
+    """
+    # Create logger
+    logger = logging.getLogger(name)
+
+    # Only add handler if logger doesn't have handlers
+    if not logger.handlers:
+        # Set log level to capture everything
+        logger.setLevel(logging.DEBUG)
+
+        # Create console handler
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setLevel(logging.DEBUG)
+
+        # Create formatter
+        formatter = LambdaLogFormatter(
+            "[%(levelname)s] %(asctime)s | %(name)s | %(message)s"
         )
 
-        self.logger.error(self._format_log(message, **error_details, **kwargs))
+        # Add formatter to handler
+        handler.setFormatter(formatter)
 
-    def warning(self, message: str, **kwargs) -> None:
-        """Log warning level message."""
-        self.logger.warning(self._format_log(message, **kwargs))
+        # Add handler to logger
+        logger.addHandler(handler)
 
-    def debug(self, message: str, **kwargs) -> None:
-        """Log debug level message."""
-        self.logger.debug(self._format_log(message, **kwargs))
+        # Prevent propagation to root logger
+        logger.propagate = False
 
-
-def get_logger(name: str) -> Logger:
-    """Get a configured logger instance."""
-    return Logger(name)
+    return logger

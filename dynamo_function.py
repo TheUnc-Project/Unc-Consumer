@@ -2,6 +2,7 @@
 AWS Lambda function that processes DynamoDB stream events.
 """
 
+import config  # Import config for environment variables
 import json
 from logger_setup import get_logger
 from typing import Dict, Any
@@ -20,8 +21,9 @@ def dynamo_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
         Dict containing the processing results
     """
     try:
+        logger.debug("DynamoDB stream event", event=event)
         records = event.get("Records", [])
-        logger.info("Processing DynamoDB stream records", records=records)
+        logger.info("Processing DynamoDB stream records", records=records, event=event)
         
         return {
             "statusCode": 200,
