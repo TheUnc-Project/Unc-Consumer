@@ -1,13 +1,35 @@
+import boto3
 import httpx
-import asyncio
 from logger_setup import get_logger
+from datetime import datetime
 
 logger = get_logger("reply")
 
+dynamodb = boto3.resource("dynamodb")
+session_table = dynamodb.Table("sessions")
 
 async def notify_reply_service(sender_id: str) -> None:
     url = "https://intelligence.theuncproject.com/reply/"
     payload = {"sender_id": sender_id, "message": f"Hello, world! {sender_id}"}
+
+    try:
+        user_session = session_table.query(
+            IndexName="SenderSessionsIndex",
+            KeyConditionExpression="sender_id = :sid",
+            ExpressionAttributeValues={":sid": sender_id},
+            Limit=1,
+            ScanIndexForward=False,  # Latest first
+        )
+
+        user_session_is_limited = user_session["Items"][0]["user_limited_until"] 
+
+        if user_session_is_limited:
+            user_session_is_limited = datetime.fromisoformat(user_session_is_limited)
+            if user_session_is_limited > datetime.now():
+                return
+    except Exception as e:
+        logger.error("Failed to get user session", sender_id=sender_id, error=str(e))
+        return
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
