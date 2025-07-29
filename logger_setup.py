@@ -5,6 +5,7 @@ Logger setup for structured logging
 import json
 import logging
 
+
 class Logger:
     def __init__(self, name: str):
         self.logger = logging.getLogger(name)

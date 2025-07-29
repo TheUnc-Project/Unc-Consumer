@@ -350,6 +350,23 @@ jobs:
               aws logs create-log-group --log-group-name "$LOG_GROUP"
               aws logs put-retention-policy --log-group-name "$LOG_GROUP" --retention-in-days 30
             fi
+
+            # Update log group to show all levels
+            aws logs put-resource-policy \
+              --policy-name AllowAllLogLevels \
+              --policy-document '{
+                "Version": "2012-10-17",
+                "Statement": [{
+                  "Sid": "AllowAllLogLevels",
+                  "Effect": "Allow",
+                  "Principal": "*",
+                  "Action": [
+                    "logs:PutLogEvents",
+                    "logs:CreateLogStream"
+                  ],
+                  "Resource": "arn:aws:logs:'$AWS_REGION':*:log-group:/aws/lambda/'$FUNCTION_NAME':*"
+                }]
+              }'
           done
 
       - name: Update Queue Lambda configuration
@@ -359,7 +376,10 @@ jobs:
             --runtime python3.11 \
             --timeout 300 \
             --memory-size 256 \
-            --environment "Variables={SQS_QUEUE_URL=${{ env.QUEUE_URL }}}" \
+            --environment "Variables={
+              SQS_QUEUE_URL=${{ env.QUEUE_URL }},
+              LOG_LEVEL=DEBUG
+            }" \
             --tracing-config Mode=Active
 
           aws lambda wait function-updated --function-name ${{ env.QUEUE_FUNCTION_NAME }}
@@ -371,6 +391,7 @@ jobs:
             --runtime python3.11 \
             --timeout 300 \
             --memory-size 256 \
+            --environment "Variables={LOG_LEVEL=DEBUG}" \
             --tracing-config Mode=Active
 
           aws lambda wait function-updated --function-name ${{ env.DYNAMO_FUNCTION_NAME }}
@@ -437,7 +458,14 @@ jobs:
               --event-source-arn "${{ env.STREAM_ARN }}" \
               --batch-size 100 \
               --starting-position LATEST \
-              --maximum-batching-window-in-seconds 5
+              --maximum-batching-window-in-seconds 5 \
+              --filter-criteria '{
+                "Filters": [
+                  {
+                    "Pattern": "{\"eventName\":[\"INSERT\"]}"
+                  }
+                ]
+              }'
           fi
 
       - name: Wait for Lambda update

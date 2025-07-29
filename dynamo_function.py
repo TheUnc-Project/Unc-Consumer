@@ -1,38 +1,52 @@
-"""
-AWS Lambda function that processes DynamoDB stream events.
-"""
+import asyncio
+from typing import Dict, Any, Set
+from boto3.dynamodb.types import TypeDeserializer
 
-import config  # Import config for environment variables
-import json
+import config
 from logger_setup import get_logger
-from typing import Dict, Any
+from handlers.dynamo_event_handler import notify_reply_service
 
 logger = get_logger("dynamo")
+deserializer = TypeDeserializer()
+
 
 def dynamo_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """
-    AWS Lambda handler function for processing DynamoDB stream events.
-
-    Args:
-        event: The event dict that contains the DynamoDB stream records
-        context: The context object that contains information about the runtime
-
-    Returns:
-        Dict containing the processing results
-    """
     try:
-        logger.debug("DynamoDB stream event", event=event)
-        logger.error("DynamoDB stream event 2", event=event)
+        logger.info("Handling DynamoDB event", request_id=context.aws_request_id)
+
         records = event.get("Records", [])
-        logger.info("Processing DynamoDB stream records", records=records, event=event)
+        if not records:
+            logger.info("No records found in event")
+            return {"statusCode": 200, "body": "No records to process"}
+
+        sender_ids: Set[str] = set()
+
+        for record in records:
+            if record.get("eventName") == "INSERT":
+                new_image = record.get("dynamodb", {}).get("NewImage", {})
+                if new_image:
+                    unmarshalled = {
+                        k: deserializer.deserialize(v) for k, v in new_image.items()
+                    }
+                    sender_id = unmarshalled.get("sender_id")
+                    if sender_id:
+                        sender_ids.add(sender_id)
+                    else:
+                        logger.warning(
+                            "sender_id not found in record", record=unmarshalled
+                        )
+
+        # Fire off all notify calls in parallel
+        asyncio.run(asyncio.gather(*[notify_reply_service(sid) for sid in sender_ids]))
 
         return {
             "statusCode": 200,
-            "body": json.dumps({"message": "DynamoDB stream records processed"}),
+            "body": "DynamoDB stream processed",
         }
+
     except Exception as e:
-        logger.error("Error in dynamo handler", error=e)
+        logger.error("Unhandled error in handler", error=str(e))
         return {
             "statusCode": 500,
-            "body": json.dumps({"error": "Internal server error", "message": str(e)}),
+            "body": "Internal server error",
         }
