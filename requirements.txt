@@ -1,0 +1,21 @@
+# AWS SDK for Python
+boto3==1.34.131
+botocore==1.34.131
+
+# AWS SQS Extended Client Library for large messages
+aws-sqs-extended-client-lib==2.0.1
+
+# HTTP requests library
+requests==2.31.0
+
+# JSON Web Token handling
+PyJWT==2.8.0
+
+# Environment variable management
+python-decouple==3.8
+
+# Date/time utilities
+python-dateutil==2.8.2
+
+# Validation library
+pydantic==2.7.1

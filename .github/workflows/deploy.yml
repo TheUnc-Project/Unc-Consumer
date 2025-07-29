@@ -1,0 +1,388 @@
+name: Deploy Lambda Function
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  FUNCTION_NAME: unc-consumer-lambda
+  QUEUE_NAME: unc-consumer-queue.fifo
+  DYNAMODB_CHAT_TABLE: chats
+  DYNAMODB_SESSION_TABLE: sessions
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install and package dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -t ./package/
+          cp consumer_function.py ./package/
+          cp config.py ./package/
+          cp logger_setup.py ./package/
+          cp -r handlers/ ./package/
+
+      - name: Create deployment zip
+        run: |
+          cd package
+          zip -r ../lambda-deployment.zip .
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Create or verify IAM role and permissions
+        run: |
+          ROLE_NAME="consumer-lambda-execution-role"
+          QUEUE_NAME="${{ env.QUEUE_NAME }}"
+          ACCOUNT_ID="${{ secrets.AWS_ACCOUNT_ID }}"
+          REGION="${{ env.AWS_REGION }}"
+
+          # Create role if it doesn't exist
+          if ! aws iam get-role --role-name $ROLE_NAME > /dev/null 2>&1; then
+            echo "Creating $ROLE_NAME..."
+            
+            # Create the role with trust policy for Lambda
+            aws iam create-role \
+              --role-name $ROLE_NAME \
+              --assume-role-policy-document '{
+                "Version": "2012-10-17",
+                "Statement": [{
+                  "Effect": "Allow",
+                  "Principal": {
+                    "Service": "lambda.amazonaws.com"
+                  },
+                  "Action": "sts:AssumeRole"
+                }]
+              }'
+          else
+            echo "Role $ROLE_NAME already exists"
+          fi
+
+          # Ensure basic Lambda execution policy is attached
+          BASIC_POLICY_ARN="arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+          if ! aws iam list-attached-role-policies --role-name $ROLE_NAME | grep -q "$BASIC_POLICY_ARN"; then
+            echo "Attaching Lambda basic execution policy..."
+            aws iam attach-role-policy \
+              --role-name $ROLE_NAME \
+              --policy-arn $BASIC_POLICY_ARN
+          else
+            echo "Lambda basic execution policy already attached"
+          fi
+
+          # Update or create custom permissions policy for SQS and Secrets
+          echo "Ensuring custom permissions are up to date..."
+          aws iam put-role-policy \
+            --role-name $ROLE_NAME \
+            --policy-name CustomPermissions \
+            --policy-document '{
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "secretsmanager:GetSecretValue"
+                  ],
+                  "Resource": "arn:aws:secretsmanager:'${REGION}':'${ACCOUNT_ID}':secret:*"
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "sqs:ReceiveMessage",
+                    "sqs:DeleteMessage",
+                    "sqs:GetQueueAttributes",
+                    "sqs:ChangeMessageVisibility"
+                  ],
+                  "Resource": [
+                    "arn:aws:sqs:'${REGION}':'${ACCOUNT_ID}':'${QUEUE_NAME}",
+                    "arn:aws:sqs:'${REGION}':'${ACCOUNT_ID}':'${QUEUE_NAME}-dlq"
+                  ]
+                },
+                {
+                  "Effect": "Allow",
+                  "Action": [
+                    "dynamodb:PutItem",
+                    "dynamodb:GetItem",
+                    "dynamodb:UpdateItem",
+                    "dynamodb:DeleteItem",
+                    "dynamodb:Query",
+                    "dynamodb:BatchWriteItem"
+                  ],
+                  "Resource": [
+                    "arn:aws:dynamodb:'${REGION}':'${ACCOUNT_ID}':table/'${DYNAMODB_CHAT_TABLE}'",
+                    "arn:aws:dynamodb:'${REGION}':'${ACCOUNT_ID}':table/'${DYNAMODB_SESSION_TABLE}'"
+                  ]
+                }
+              ]
+            }'
+
+          echo "Waiting for role/policy changes to propagate..."
+          sleep 10
+
+      # Create DynamoDB Session table
+      - name: Create or verify DynamoDB Session table
+        run: |
+          TABLE_NAME="${{ env.DYNAMODB_SESSION_TABLE }}"
+
+          if ! aws dynamodb describe-table --table-name $TABLE_NAME > /dev/null 2>&1; then
+            echo "Creating DynamoDB Session table $TABLE_NAME..."
+            aws dynamodb create-table \
+              --table-name $TABLE_NAME \
+              --attribute-definitions \
+                AttributeName=session_id,AttributeType=S \
+                AttributeName=sender_id,AttributeType=S \
+                AttributeName=created_at,AttributeType=N \
+                AttributeName=status,AttributeType=S \
+              --key-schema \
+                AttributeName=session_id,KeyType=HASH \
+              --billing-mode PAY_PER_REQUEST \
+              --tags Key=Environment,Value=production \
+              --global-secondary-indexes \
+                "[{
+                    \"IndexName\": \"SenderSessionsIndex\",
+                    \"KeySchema\": [
+                        {\"AttributeName\": \"sender_id\", \"KeyType\": \"HASH\"},
+                        {\"AttributeName\": \"created_at\", \"KeyType\": \"RANGE\"}
+                    ],
+                    \"Projection\": {\"ProjectionType\": \"ALL\"}
+                },
+                {
+                    \"IndexName\": \"StatusIndex\",
+                    \"KeySchema\": [
+                        {\"AttributeName\": \"status\", \"KeyType\": \"HASH\"},
+                        {\"AttributeName\": \"created_at\", \"KeyType\": \"RANGE\"}
+                    ],
+                    \"Projection\": {\"ProjectionType\": \"ALL\"}
+                }]"
+
+            echo "Waiting for table to become active..."
+            aws dynamodb wait table-exists --table-name $TABLE_NAME
+          else
+            echo "DynamoDB Session table $TABLE_NAME already exists"
+          fi
+
+      # Create DynamoDB Chat table
+      - name: Create or verify DynamoDB Chat table
+        run: |
+          TABLE_NAME="${{ env.DYNAMODB_CHAT_TABLE }}"
+
+          if ! aws dynamodb describe-table --table-name $TABLE_NAME > /dev/null 2>&1; then
+            echo "Creating DynamoDB Chat table $TABLE_NAME..."
+            aws dynamodb create-table \
+              --table-name $TABLE_NAME \
+              --attribute-definitions \
+                AttributeName=sender_id,AttributeType=S \
+                AttributeName=chat_type,AttributeType=S \
+                AttributeName=created_at,AttributeType=N \
+                AttributeName=session_id,AttributeType=S \
+              --key-schema \
+                AttributeName=sender_id,KeyType=HASH \
+                AttributeName=chat_type,KeyType=RANGE \
+              --billing-mode PAY_PER_REQUEST \
+              --tags Key=Environment,Value=production
+
+            echo "Waiting for table to become active..."
+            aws dynamodb wait table-exists --table-name $TABLE_NAME
+
+            # Create GSIs for chat_type, time-based, and session-based queries
+            echo "Creating GSIs for chat_type, time-based, and session-based queries..."
+            aws dynamodb update-table \
+              --table-name $TABLE_NAME \
+              --attribute-definitions \
+                AttributeName=chat_type,AttributeType=S \
+                AttributeName=sender_id,AttributeType=S \
+                AttributeName=created_at,AttributeType=N \
+                AttributeName=session_id,AttributeType=S \
+              --global-secondary-indexes \
+                "[{
+                    \"IndexName\": \"ChatTypeIndex\",
+                    \"KeySchema\": [
+                        {\"AttributeName\": \"chat_type\", \"KeyType\": \"HASH\"},
+                        {\"AttributeName\": \"sender_id\", \"KeyType\": \"RANGE\"}
+                    ],
+                    \"Projection\": {\"ProjectionType\": \"ALL\"}
+                },
+                {
+                    \"IndexName\": \"SenderTimeIndex\",
+                    \"KeySchema\": [
+                        {\"AttributeName\": \"sender_id\", \"KeyType\": \"HASH\"},
+                        {\"AttributeName\": \"created_at\", \"KeyType\": \"RANGE\"}
+                    ],
+                    \"Projection\": {\"ProjectionType\": \"ALL\"}
+                },
+                {
+                    \"IndexName\": \"ChatTypeTimeIndex\",
+                    \"KeySchema\": [
+                        {\"AttributeName\": \"chat_type\", \"KeyType\": \"HASH\"},
+                        {\"AttributeName\": \"created_at\", \"KeyType\": \"RANGE\"}
+                    ],
+                    \"Projection\": {\"ProjectionType\": \"ALL\"}
+                },
+                {
+                    \"IndexName\": \"SessionIndex\",
+                    \"KeySchema\": [
+                        {\"AttributeName\": \"session_id\", \"KeyType\": \"HASH\"},
+                        {\"AttributeName\": \"created_at\", \"KeyType\": \"RANGE\"}
+                    ],
+                    \"Projection\": {\"ProjectionType\": \"ALL\"}
+                },
+                {
+                    \"IndexName\": \"SenderSessionIndex\",
+                    \"KeySchema\": [
+                        {\"AttributeName\": \"sender_id\", \"KeyType\": \"HASH\"},
+                        {\"AttributeName\": \"session_id\", \"KeyType\": \"RANGE\"}
+                    ],
+                    \"Projection\": {\"ProjectionType\": \"ALL\"}
+                }]"
+          else
+            echo "DynamoDB Chat table $TABLE_NAME already exists"
+          fi
+
+      # Create FIFO queue and DLQ
+      - name: Create or verify SQS queues
+        run: |
+          # Create DLQ first
+          DLQ_NAME="${{ env.QUEUE_NAME }}-dlq"
+          echo "Setting up Dead Letter Queue..."
+          DLQ_URL=$(aws sqs get-queue-url --queue-name $DLQ_NAME --output text --query 'QueueUrl' 2>/dev/null || echo "")
+
+          if [ -z "$DLQ_URL" ]; then
+            echo "Creating DLQ FIFO queue..."
+            DLQ_URL=$(aws sqs create-queue \
+              --queue-name $DLQ_NAME \
+              --attributes '{
+                "FifoQueue": "true",
+                "ContentBasedDeduplication": "true",
+                "MessageRetentionPeriod": "1209600"
+              }' \
+              --output text --query 'QueueUrl')
+          fi
+
+          # Get DLQ ARN for main queue configuration
+          DLQ_ARN=$(aws sqs get-queue-attributes \
+            --queue-url "$DLQ_URL" \
+            --attribute-names QueueArn \
+            --output text --query 'Attributes.QueueArn')
+
+          # Create or update main FIFO queue
+          echo "Setting up main FIFO queue..."
+          QUEUE_URL=$(aws sqs get-queue-url --queue-name ${{ env.QUEUE_NAME }} --output text --query 'QueueUrl' 2>/dev/null || echo "")
+
+          if [ -z "$QUEUE_URL" ]; then
+            echo "Creating main FIFO queue..."
+            QUEUE_URL=$(aws sqs create-queue \
+              --queue-name ${{ env.QUEUE_NAME }} \
+              --attributes '{
+                "FifoQueue": "true",
+                "ContentBasedDeduplication": "true",
+                "VisibilityTimeout": "300",
+                "MessageRetentionPeriod": "345600",
+                "RedrivePolicy": "{\"deadLetterTargetArn\":\"'$DLQ_ARN'\",\"maxReceiveCount\":3}"
+              }' \
+              --output text --query 'QueueUrl')
+          else
+            echo "Updating main queue configuration..."
+            aws sqs set-queue-attributes \
+              --queue-url "$QUEUE_URL" \
+              --attributes '{
+                "RedrivePolicy": "{\"deadLetterTargetArn\":\"'$DLQ_ARN'\",\"maxReceiveCount\":3}"
+              }'
+          fi
+
+          echo "QUEUE_URL=$QUEUE_URL" >> $GITHUB_ENV
+          echo "DLQ_URL=$DLQ_URL" >> $GITHUB_ENV
+
+      - name: Deploy or create Lambda function
+        run: |
+          if aws lambda get-function --function-name ${{ env.FUNCTION_NAME }} > /dev/null 2>&1; then
+          echo "Updating existing Lambda function code..."
+          aws lambda update-function-code \
+              --function-name ${{ env.FUNCTION_NAME }} \
+              --zip-file fileb://lambda-deployment.zip
+
+          echo "Waiting for code update to complete..."
+          aws lambda wait function-updated --function-name ${{ env.FUNCTION_NAME }}
+          else
+          echo "Creating new Lambda function..."
+          aws lambda create-function \
+              --function-name ${{ env.FUNCTION_NAME }} \
+              --runtime python3.11 \
+              --role arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/consumer-lambda-execution-role \
+              --handler consumer_function.consumer_handler \
+              --zip-file fileb://lambda-deployment.zip \
+              --timeout 300 \
+              --memory-size 256 \
+              --description "Unc Consumer Lambda Function deployed via GitHub Actions" \
+              --environment "Variables={SQS_QUEUE_URL=${{ env.QUEUE_URL }}"
+
+          echo "Waiting for function creation to complete..."
+          aws lambda wait function-exists --function-name ${{ env.FUNCTION_NAME }}
+          aws lambda wait function-updated --function-name ${{ env.FUNCTION_NAME }}
+          fi
+
+      - name: Update Lambda configuration
+        run: |
+          echo "Updating Lambda configuration..."
+          aws lambda update-function-configuration \
+          --function-name ${{ env.FUNCTION_NAME }} \
+          --runtime python3.11 \
+          --timeout 300 \
+          --memory-size 256 \
+          --environment "Variables={SQS_QUEUE_URL=${{ env.QUEUE_URL }}"
+
+          echo "Waiting for configuration update to complete..."
+          aws lambda wait function-updated --function-name ${{ env.FUNCTION_NAME }}
+
+      - name: Configure Lambda trigger
+        run: |
+          # Remove existing triggers
+          aws lambda remove-permission \
+            --function-name ${{ env.FUNCTION_NAME }} \
+            --statement-id sqs-trigger || true
+
+          # Add SQS trigger permission
+          aws lambda add-permission \
+            --function-name ${{ env.FUNCTION_NAME }} \
+            --statement-id sqs-trigger \
+            --action lambda:InvokeFunction \
+            --principal sqs.amazonaws.com \
+            --source-arn ${{ env.QUEUE_URL }}
+
+          # Create event source mapping
+          MAPPING_UUID=$(aws lambda list-event-source-mappings \
+            --function-name ${{ env.FUNCTION_NAME }} \
+            --query "EventSourceMappings[?EventSourceArn=='${{ env.QUEUE_URL }}'].UUID" \
+            --output text)
+
+          if [ -z "$MAPPING_UUID" ] || [ "$MAPPING_UUID" = "None" ]; then
+            aws lambda create-event-source-mapping \
+              --function-name ${{ env.FUNCTION_NAME }} \
+              --event-source-arn ${{ env.QUEUE_URL }} \
+              --batch-size 100 \
+              --maximum-batching-window-in-seconds 0
+          fi
+
+      - name: Wait for Lambda update
+        run: aws lambda wait function-updated --function-name ${{ env.FUNCTION_NAME }}
+
+      - name: Print deployment info
+        run: |
+          echo "Deployment Complete!"
+          echo "SQS Queue URL: ${{ env.QUEUE_URL }}"
+          echo "Lambda Function: ${{ env.FUNCTION_NAME }}"
