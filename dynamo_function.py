@@ -28,6 +28,15 @@ def dynamo_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                     unmarshalled = {
                         k: deserializer.deserialize(v) for k, v in new_image.items()
                     }
+
+                    # Only process inbound messages
+                    chat_type = unmarshalled.get("chat_type")
+                    if chat_type != "inbound":
+                        logger.debug(
+                            f"Skipping non-inbound message: chat_type={chat_type}"
+                        )
+                        continue
+
                     sender_id = unmarshalled.get("sender_id")
                     if sender_id:
                         sender_ids.add(sender_id)
