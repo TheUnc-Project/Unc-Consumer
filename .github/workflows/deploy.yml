@@ -241,7 +241,7 @@ jobs:
       - name: Create or verify SQS queues
         run: |
           # Create DLQ first
-          DLQ_NAME="${{ env.QUEUE_NAME }}-dlq"
+          DLQ_NAME="${{ env.QUEUE_NAME }}.dlq.fifo"
           echo "Setting up Dead Letter Queue..."
           DLQ_URL=$(aws sqs get-queue-url --queue-name $DLQ_NAME --output text --query 'QueueUrl' 2>/dev/null || echo "")
 
@@ -265,12 +265,13 @@ jobs:
 
           # Create or update main FIFO queue
           echo "Setting up main FIFO queue..."
-          QUEUE_URL=$(aws sqs get-queue-url --queue-name ${{ env.QUEUE_NAME }} --output text --query 'QueueUrl' 2>/dev/null || echo "")
+          MAIN_QUEUE_NAME="${{ env.QUEUE_NAME }}"
+          QUEUE_URL=$(aws sqs get-queue-url --queue-name $MAIN_QUEUE_NAME --output text --query 'QueueUrl' 2>/dev/null || echo "")
 
           if [ -z "$QUEUE_URL" ]; then
             echo "Creating main FIFO queue..."
             QUEUE_URL=$(aws sqs create-queue \
-              --queue-name ${{ env.QUEUE_NAME }} \
+              --queue-name $MAIN_QUEUE_NAME \
               --attributes '{
                 "FifoQueue": "true",
                 "ContentBasedDeduplication": "true",
