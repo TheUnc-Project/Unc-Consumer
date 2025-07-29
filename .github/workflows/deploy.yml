@@ -9,7 +9,7 @@ on:
 env:
   AWS_REGION: us-east-1
   FUNCTION_NAME: unc-consumer-lambda
-  QUEUE_NAME: unc-consumer-queue.fifo
+  QUEUE_NAME: unc-consumer-queue
   DYNAMODB_CHAT_TABLE: chats
   DYNAMODB_SESSION_TABLE: sessions
 
