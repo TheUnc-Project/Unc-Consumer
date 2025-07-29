@@ -21,10 +21,6 @@ def dynamo_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     try:
         records = event.get("Records", [])
-        if not records:
-            logger.info("No records in event")
-            return {"statusCode": 200, "body": "No records to process"}
-
         logger.info("Processing DynamoDB stream records", records=records)
         
         return {

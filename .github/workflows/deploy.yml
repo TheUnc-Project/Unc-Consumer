@@ -352,7 +352,7 @@ jobs:
             fi
           done
 
-      - name: Update Lambda configuration
+      - name: Update Queue Lambda configuration
         run: |
           aws lambda update-function-configuration \
             --function-name ${{ env.QUEUE_FUNCTION_NAME }} \
@@ -363,6 +363,17 @@ jobs:
             --tracing-config Mode=Active
 
           aws lambda wait function-updated --function-name ${{ env.QUEUE_FUNCTION_NAME }}
+
+      - name: Update DynamoDB Stream Lambda configuration
+        run: |
+          aws lambda update-function-configuration \
+            --function-name ${{ env.DYNAMO_FUNCTION_NAME }} \
+            --runtime python3.11 \
+            --timeout 300 \
+            --memory-size 256 \
+            --tracing-config Mode=Active
+
+          aws lambda wait function-updated --function-name ${{ env.DYNAMO_FUNCTION_NAME }}
 
       - name: Configure Queue Lambda trigger
         run: |

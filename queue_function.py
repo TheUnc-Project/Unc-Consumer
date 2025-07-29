@@ -1,5 +1,5 @@
 """
-AWS Lambda consumer function that processes messages from SQS.
+AWS Lambda queue function that processes messages from SQS.
 """
 
 import config  # Import config for environment variables
@@ -9,7 +9,7 @@ from logger_setup import get_logger
 from typing import Dict, Any, List
 from handlers.queue_message_handler import process_message
 
-logger = get_logger("consumer")
+logger = get_logger("queue")
 
 def parse_message_body(body: str) -> Dict[str, Any]:
     """
