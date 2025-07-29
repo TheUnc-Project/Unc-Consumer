@@ -329,7 +329,7 @@ jobs:
               --function-name ${{ env.DYNAMO_FUNCTION_NAME }} \
               --runtime python3.11 \
               --role arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/consumer-lambda-execution-role \
-              --handler stream_function.stream_handler \
+              --handler stream_function.dynamo_handler \
               --zip-file fileb://lambda-deployment.zip \
               --timeout 300 \
               --memory-size 256 \

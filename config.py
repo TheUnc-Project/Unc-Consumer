@@ -28,7 +28,9 @@ def get_secret(secret_name: str) -> str:
 
 
 # Map of environment variables to secrets in AWS Secrets Manager
-secrets_map = {}
+secrets_map = {
+    "INTELLIGENCE_API_SECRET": "INTELLIGENCE_API_SECRET",
+}
 
 # Load secrets into os.environ, overwriting any existing values
 for env_var, secret_name in secrets_map.items():
