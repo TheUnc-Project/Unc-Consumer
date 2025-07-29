@@ -83,13 +83,13 @@ jobs:
               --policy-arn $BASIC_POLICY_ARN
           fi
 
-          POLICY=$(printf '{
+          echo '{
             "Version": "2012-10-17",
             "Statement": [
               {
                 "Effect": "Allow",
                 "Action": ["secretsmanager:GetSecretValue"],
-                "Resource": "arn:aws:secretsmanager:%s:%s:secret:*"
+                "Resource": "arn:aws:secretsmanager:'$REGION':'$ACCOUNT_ID':secret:*"
               },
               {
                 "Effect": "Allow",
@@ -100,8 +100,8 @@ jobs:
                   "sqs:ChangeMessageVisibility"
                 ],
                 "Resource": [
-                  "arn:aws:sqs:%s:%s:%s",
-                  "arn:aws:sqs:%s:%s:%s"
+                  "arn:aws:sqs:'$REGION':'$ACCOUNT_ID':'$CLEAN_QUEUE_NAME'",
+                  "arn:aws:sqs:'$REGION':'$ACCOUNT_ID':'$DLQ_NAME'"
                 ]
               },
               {
@@ -118,8 +118,8 @@ jobs:
                   "dynamodb:BatchWriteItem"
                 ],
                 "Resource": [
-                  "arn:aws:dynamodb:%s:%s:table/%s",
-                  "arn:aws:dynamodb:%s:%s:table/%s"
+                  "arn:aws:dynamodb:'$REGION':'$ACCOUNT_ID':table/'$DYNAMODB_CHAT_TABLE'",
+                  "arn:aws:dynamodb:'$REGION':'$ACCOUNT_ID':table/'$DYNAMODB_SESSION_TABLE'"
                 ]
               },
               {
@@ -129,20 +129,15 @@ jobs:
                   "logs:CreateLogStream",
                   "logs:PutLogEvents"
                 ],
-                "Resource": "arn:aws:logs:%s:%s:log-group:/aws/lambda/%s:*"
+                "Resource": "arn:aws:logs:'$REGION':'$ACCOUNT_ID':log-group:/aws/lambda/'${{ env.FUNCTION_NAME }}':*"
               }
             ]
-          }' "$REGION" "$ACCOUNT_ID" \
-             "$REGION" "$ACCOUNT_ID" "$CLEAN_QUEUE_NAME" \
-             "$REGION" "$ACCOUNT_ID" "$DLQ_NAME" \
-             "$REGION" "$ACCOUNT_ID" "$DYNAMODB_CHAT_TABLE" \
-             "$REGION" "$ACCOUNT_ID" "$DYNAMODB_SESSION_TABLE" \
-             "$REGION" "$ACCOUNT_ID" "${{ env.FUNCTION_NAME }}"
+          }' > policy.json
 
           aws iam put-role-policy \
             --role-name $ROLE_NAME \
             --policy-name CustomPermissions \
-            --policy-document "$POLICY"
+            --policy-document "file://policy.json"
 
           sleep 10
 
