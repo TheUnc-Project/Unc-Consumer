@@ -191,7 +191,8 @@ jobs:
               --timeout 300 \
               --memory-size 256 \
               --description "Unc Consumer Lambda Function deployed via GitHub Actions" \
-              --environment "Variables={SQS_QUEUE_URL=${{ env.QUEUE_URL }}"
+              --environment "Variables={SQS_QUEUE_URL=${{ env.QUEUE_URL }}}"
+
             aws lambda wait function-exists --function-name ${{ env.FUNCTION_NAME }}
             aws lambda wait function-updated --function-name ${{ env.FUNCTION_NAME }}
           fi
@@ -203,7 +204,8 @@ jobs:
             --runtime python3.11 \
             --timeout 300 \
             --memory-size 256 \
-            --environment "Variables={SQS_QUEUE_URL=${{ env.QUEUE_URL }}"
+            --environment "Variables={SQS_QUEUE_URL=${{ env.QUEUE_URL }}}"
+
           aws lambda wait function-updated --function-name ${{ env.FUNCTION_NAME }}
 
       - name: Configure Lambda trigger
