@@ -290,7 +290,7 @@ jobs:
           echo "QUEUE_URL=$QUEUE_URL" >> $GITHUB_ENV
           echo "DLQ_URL=$DLQ_URL" >> $GITHUB_ENV
 
-      - name: Deploy or create Lambda function
+      - name: Deploy or create Queue Lambda function
         run: |
           if aws lambda get-function --function-name ${{ env.QUEUE_FUNCTION_NAME }} > /dev/null 2>&1; then
             aws lambda update-function-code \
@@ -380,7 +380,7 @@ jobs:
             aws lambda create-event-source-mapping \
               --function-name ${{ env.QUEUE_FUNCTION_NAME }} \
               --event-source-arn "$QUEUE_ARN" \
-              --batch-size 100 \
+              --batch-size 10 \
               --maximum-batching-window-in-seconds 5 \
               --scaling-config MaximumConcurrency=2
           fi
@@ -410,7 +410,7 @@ jobs:
             aws lambda create-event-source-mapping \
               --function-name ${{ env.DYNAMO_FUNCTION_NAME }} \
               --event-source-arn "${{ env.STREAM_ARN }}" \
-              --batch-size 100 \
+              --batch-size 10 \
               --starting-position LATEST \
               --maximum-batching-window-in-seconds 5
           fi
