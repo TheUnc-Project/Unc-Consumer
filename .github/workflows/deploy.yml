@@ -137,7 +137,10 @@ jobs:
                   "logs:CreateLogStream",
                   "logs:PutLogEvents"
                 ],
-                "Resource": "arn:aws:logs:'$REGION':'$ACCOUNT_ID':log-group:/aws/lambda/'${{ env.QUEUE_FUNCTION_NAME }}':*"
+                "Resource": [
+                  "arn:aws:logs:'$REGION':'$ACCOUNT_ID':log-group:/aws/lambda/'${{ env.QUEUE_FUNCTION_NAME }}':*",
+                  "arn:aws:logs:'$REGION':'$ACCOUNT_ID':log-group:/aws/lambda/'${{ env.DYNAMO_FUNCTION_NAME }}':*"
+                ]
               }
             ]
           }' > policy.json
@@ -336,6 +339,17 @@ jobs:
             aws lambda wait function-exists --function-name ${{ env.DYNAMO_FUNCTION_NAME }}
             aws lambda wait function-updated --function-name ${{ env.DYNAMO_FUNCTION_NAME }}
           fi
+
+      - name: Create CloudWatch Log Groups
+        run: |
+          # Create log groups if they don't exist
+          for FUNCTION_NAME in "${{ env.QUEUE_FUNCTION_NAME }}" "${{ env.DYNAMO_FUNCTION_NAME }}"; do
+            LOG_GROUP="/aws/lambda/$FUNCTION_NAME"
+            if ! aws logs describe-log-groups --log-group-name-prefix "$LOG_GROUP" | grep -q "$LOG_GROUP"; then
+              aws logs create-log-group --log-group-name "$LOG_GROUP"
+              aws logs put-retention-policy --log-group-name "$LOG_GROUP" --retention-in-days 30
+            fi
+          done
 
       - name: Update Lambda configuration
         run: |
