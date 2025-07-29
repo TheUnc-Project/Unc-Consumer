@@ -11,7 +11,6 @@ from handlers.queue_message_handler import process_message
 
 logger = get_logger("consumer")
 
-
 def parse_message_body(body: str) -> Dict[str, Any]:
     """
     Parse URL-encoded message body into structured data.
@@ -73,7 +72,6 @@ def parse_message_body(body: str) -> Dict[str, Any]:
         "raw": data,  # Keep original data for reference
     }
 
-
 def group_messages_by_sender(
     records: List[Dict[str, Any]],
 ) -> Dict[str, List[Dict[str, Any]]]:
@@ -113,7 +111,6 @@ def group_messages_by_sender(
             continue
 
     return messages_by_sender
-
 
 def queue_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
@@ -160,29 +157,6 @@ def queue_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
                 }
             ),
         }
-
-    except Exception as e:
-        logger.error("Error in consumer handler", error=e)
-        return {
-            "statusCode": 500,
-            "body": json.dumps({"error": "Internal server error", "message": str(e)}),
-        }
-
-def dynamo_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
-    """
-    AWS Lambda handler function for processing DynamoDB messages.
-    Messages are grouped by senderId and processed in batches.
-
-    Args:
-        event: The event dict that contains the SQS records
-        context: The context object that contains information about the runtime
-
-    Returns:
-        Dict containing the processing results
-    """
-    try:
-        records = event.get("Records", [])
-        logger.info("Records", records=records)
 
     except Exception as e:
         logger.error("Error in consumer handler", error=e)
