@@ -88,49 +88,55 @@ jobs:
 
           # Update or create custom permissions policy for SQS and Secrets
           echo "Ensuring custom permissions are up to date..."
+          POLICY=$(printf '{
+            "Version": "2012-10-17",
+            "Statement": [
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "secretsmanager:GetSecretValue"
+                ],
+                "Resource": "arn:aws:secretsmanager:%s:%s:secret:*"
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "sqs:ReceiveMessage",
+                  "sqs:DeleteMessage",
+                  "sqs:GetQueueAttributes",
+                  "sqs:ChangeMessageVisibility"
+                ],
+                "Resource": [
+                  "arn:aws:sqs:%s:%s:%s",
+                  "arn:aws:sqs:%s:%s:%s-dlq"
+                ]
+              },
+              {
+                "Effect": "Allow",
+                "Action": [
+                  "dynamodb:PutItem",
+                  "dynamodb:GetItem",
+                  "dynamodb:UpdateItem",
+                  "dynamodb:DeleteItem",
+                  "dynamodb:Query",
+                  "dynamodb:BatchWriteItem"
+                ],
+                "Resource": [
+                  "arn:aws:dynamodb:%s:%s:table/%s",
+                  "arn:aws:dynamodb:%s:%s:table/%s"
+                ]
+              }
+            ]
+          }' "$REGION" "$ACCOUNT_ID" \
+             "$REGION" "$ACCOUNT_ID" "$QUEUE_NAME" \
+             "$REGION" "$ACCOUNT_ID" "$QUEUE_NAME" \
+             "$REGION" "$ACCOUNT_ID" "$DYNAMODB_CHAT_TABLE" \
+             "$REGION" "$ACCOUNT_ID" "$DYNAMODB_SESSION_TABLE")
+
           aws iam put-role-policy \
             --role-name $ROLE_NAME \
             --policy-name CustomPermissions \
-            --policy-document '{
-              "Version": "2012-10-17",
-              "Statement": [
-                {
-                  "Effect": "Allow",
-                  "Action": [
-                    "secretsmanager:GetSecretValue"
-                  ],
-                  "Resource": "arn:aws:secretsmanager:${REGION}:${ACCOUNT_ID}:secret:*"
-                },
-                {
-                  "Effect": "Allow",
-                  "Action": [
-                    "sqs:ReceiveMessage",
-                    "sqs:DeleteMessage",
-                    "sqs:GetQueueAttributes",
-                    "sqs:ChangeMessageVisibility"
-                  ],
-                  "Resource": [
-                    "arn:aws:sqs:${REGION}:${ACCOUNT_ID}:${QUEUE_NAME}",
-                    "arn:aws:sqs:${REGION}:${ACCOUNT_ID}:${QUEUE_NAME}-dlq"
-                  ]
-                },
-                {
-                  "Effect": "Allow",
-                  "Action": [
-                    "dynamodb:PutItem",
-                    "dynamodb:GetItem",
-                    "dynamodb:UpdateItem",
-                    "dynamodb:DeleteItem",
-                    "dynamodb:Query",
-                    "dynamodb:BatchWriteItem"
-                  ],
-                  "Resource": [
-                    "arn:aws:dynamodb:${REGION}:${ACCOUNT_ID}:table/${DYNAMODB_CHAT_TABLE}",
-                    "arn:aws:dynamodb:${REGION}:${ACCOUNT_ID}:table/${DYNAMODB_SESSION_TABLE}"
-                  ]
-                }
-              ]
-            }'
+            --policy-document "$POLICY"
 
           echo "Waiting for role/policy changes to propagate..."
           sleep 10
