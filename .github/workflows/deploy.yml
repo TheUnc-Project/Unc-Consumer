@@ -350,23 +350,6 @@ jobs:
               aws logs create-log-group --log-group-name "$LOG_GROUP"
               aws logs put-retention-policy --log-group-name "$LOG_GROUP" --retention-in-days 30
             fi
-
-            # Update log group to show all levels
-            aws logs put-resource-policy \
-              --policy-name AllowAllLogLevels \
-              --policy-document '{
-                "Version": "2012-10-17",
-                "Statement": [{
-                  "Sid": "AllowAllLogLevels",
-                  "Effect": "Allow",
-                  "Principal": "*",
-                  "Action": [
-                    "logs:PutLogEvents",
-                    "logs:CreateLogStream"
-                  ],
-                  "Resource": "arn:aws:logs:'$AWS_REGION':*:log-group:/aws/lambda/'$FUNCTION_NAME':*"
-                }]
-              }'
           done
 
       - name: Update Queue Lambda configuration
