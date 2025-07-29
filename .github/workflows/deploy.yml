@@ -349,7 +349,7 @@ jobs:
 
           aws lambda wait function-updated --function-name ${{ env.QUEUE_FUNCTION_NAME }}
 
-      - name: Configure Lambda trigger
+      - name: Configure Queue Lambda trigger
         run: |
           # Get Queue ARN for permissions
           QUEUE_ARN=$(aws sqs get-queue-attributes \
@@ -381,7 +381,6 @@ jobs:
               --function-name ${{ env.QUEUE_FUNCTION_NAME }} \
               --event-source-arn "$QUEUE_ARN" \
               --batch-size 10 \
-              --maximum-batching-window-in-seconds 5 \
               --scaling-config MaximumConcurrency=2
           fi
 
@@ -410,7 +409,7 @@ jobs:
             aws lambda create-event-source-mapping \
               --function-name ${{ env.DYNAMO_FUNCTION_NAME }} \
               --event-source-arn "${{ env.STREAM_ARN }}" \
-              --batch-size 10 \
+              --batch-size 100 \
               --starting-position LATEST \
               --maximum-batching-window-in-seconds 5
           fi
