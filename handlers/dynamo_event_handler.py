@@ -7,7 +7,7 @@ logger = get_logger("reply")
 
 async def notify_reply_service(sender_id: str) -> None:
     url = "https://intelligence.theuncproject.com/reply/"
-    payload = {"sender_id": sender_id}
+    payload = {"sender_id": sender_id, "message": f"Hello, world! {sender_id}"}
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
