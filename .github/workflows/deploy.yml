@@ -114,6 +114,9 @@ jobs:
               {
                 "Effect": "Allow",
                 "Action": [
+                  "dynamodb:CreateTable",
+                  "dynamodb:UpdateTable",
+                  "dynamodb:DescribeTable",
                   "dynamodb:PutItem",
                   "dynamodb:GetItem",
                   "dynamodb:UpdateItem",
