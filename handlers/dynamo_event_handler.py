@@ -8,6 +8,7 @@ logger = get_logger("reply")
 dynamodb = boto3.resource("dynamodb")
 session_table = dynamodb.Table("sessions")
 
+
 async def notify_reply_service(sender_id: str) -> None:
     url = "https://intelligence.theuncproject.com/reply/"
     payload = {"sender_id": sender_id, "message": f"Hello, world! {sender_id}"}
@@ -21,15 +22,22 @@ async def notify_reply_service(sender_id: str) -> None:
             ScanIndexForward=False,  # Latest first
         )
 
-        user_session_is_limited = user_session["Items"][0]["user_limited_until"] 
+        if user_session.get("Items") and len(user_session["Items"]) > 0:
+            user_session_is_limited = user_session["Items"][0].get("user_limited_until")
 
-        if user_session_is_limited:
-            user_session_is_limited = datetime.fromisoformat(user_session_is_limited)
-            if user_session_is_limited > datetime.now():
-                return
+            if user_session_is_limited:
+                user_session_is_limited = datetime.fromisoformat(
+                    user_session_is_limited
+                )
+                if user_session_is_limited > datetime.now():
+                    logger.info(
+                        f"User {sender_id} is rate limited until {user_session_is_limited}"
+                    )
+                    return
+
     except Exception as e:
         logger.error("Failed to get user session", sender_id=sender_id, error=str(e))
-        return
+        # Don't return here - allow the service to continue even if session check fails
 
     try:
         async with httpx.AsyncClient(timeout=10) as client:
