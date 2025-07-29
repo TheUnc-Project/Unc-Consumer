@@ -11,7 +11,6 @@ from handlers.queue_message_handler import process_message
 
 logger = get_logger("queue")
 
-
 def parse_message_body(body: str) -> Dict[str, Any]:
     """
     Parse URL-encoded message body into structured data.

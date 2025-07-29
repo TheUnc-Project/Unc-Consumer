@@ -22,9 +22,10 @@ def dynamo_handler(event: Dict[str, Any], context: Any) -> Dict[str, Any]:
     """
     try:
         logger.debug("DynamoDB stream event", event=event)
+        logger.error("DynamoDB stream event 2", event=event)
         records = event.get("Records", [])
         logger.info("Processing DynamoDB stream records", records=records, event=event)
-        
+
         return {
             "statusCode": 200,
             "body": json.dumps({"message": "DynamoDB stream records processed"}),
