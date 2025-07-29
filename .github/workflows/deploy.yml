@@ -441,7 +441,7 @@ jobs:
               --event-source-arn "${{ env.STREAM_ARN }}" \
               --batch-size 100 \
               --starting-position LATEST \
-              --maximum-batching-window-in-seconds 5 \
+              --maximum-batching-window-in-seconds 3 \
               --filter-criteria '{
                 "Filters": [
                   {
