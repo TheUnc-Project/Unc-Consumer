@@ -17,7 +17,9 @@ async def notify_reply_service(sender_id: str) -> None:
         user_session = session_table.query(
             IndexName="SenderSessionsIndex",
             KeyConditionExpression="sender_id = :sid",
-            ExpressionAttributeValues={":sid": sender_id},
+            FilterExpression="#status = :status",
+            ExpressionAttributeNames={"#status": "status"},
+            ExpressionAttributeValues={":sid": sender_id, ":status": "active"},
             Limit=1,
             ScanIndexForward=False,  # Latest first
         )
